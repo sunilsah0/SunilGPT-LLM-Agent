@@ -54,7 +54,7 @@ def chat(req: ChatRequest):
                     yield chunk.choices[0].delta.content
         except Exception as e:
             print("LLM error:", e)  # you can see this in your terminal
-            yield "\n\n⚠️ Error: {type(e).__name__}: {str(e)[:200]}"
+            yield f"\n\n⚠️ Error: {type(e).__name__}: {str(e)[:200]}"
 
     return StreamingResponse(stream(), media_type="text/plain; charset=utf-8")
 
