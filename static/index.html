@@ -7,15 +7,30 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <style>
-  :root { --bg:#faf9f5; --panel:#fff; --text:#1f1e1d; --muted:#73726c; --accent:#c96442; --user:#f0eee6; --border:#e5e3da; }
+  :root { --bg:#faf9f5; --panel:#fff; --side:#f3f1ea; --text:#1f1e1d; --muted:#73726c; --accent:#c96442; --user:#f0eee6; --border:#e5e3da; --hover:#e9e6dc; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#262624; --panel:#30302e; --text:#f0eee6; --muted:#a09f98; --user:#3a3a37; --border:#444441; }
+    :root { --bg:#262624; --panel:#30302e; --side:#1f1e1d; --text:#f0eee6; --muted:#a09f98; --user:#3a3a37; --border:#444441; --hover:#30302e; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
-  header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border); }
-  header h1 { font-size: 18px; margin: 0; }
+  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  #app { display: flex; height: 100%; }
+
+  /* sidebar */
+  #side { width: 260px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px; gap: 10px; }
+  #new { background: var(--accent); color: #fff; border: none; padding: 10px; }
+  #list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .item { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .item:hover { background: var(--hover); }
+  .item.active { background: var(--hover); font-weight: 600; }
+  .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item button { border: none; background: transparent; color: var(--muted); padding: 0 4px; font-size: 16px; }
+
+  /* main */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #menu { display: none; }
   button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); padding: 6px 12px; }
   #chat { flex: 1; overflow-y: auto; padding: 20px; }
   .wrap { max-width: 760px; margin: 0 auto; }
@@ -25,52 +40,89 @@
   .msg.assistant code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
   .msg.assistant table { border-collapse: collapse; }
   .msg.assistant td, .msg.assistant th { border: 1px solid var(--border); padding: 4px 8px; }
+  .actions { display: flex; gap: 6px; margin-top: 6px; }
+  .actions button { font-size: 12px; padding: 2px 8px; color: var(--muted); }
   #empty { text-align: center; color: var(--muted); margin-top: 20vh; }
   footer { padding: 12px 20px 20px; }
   #box { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
   textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font: inherit; max-height: 160px; padding: 6px; }
   #send { background: var(--accent); color: #fff; border: none; }
+
+  /* phones */
+  @media (max-width: 700px) {
+    #side { position: fixed; z-index: 10; top: 0; bottom: 0; left: 0; transform: translateX(-100%); transition: transform 0.2s; }
+    #side.open { transform: translateX(0); }
+    #menu { display: inline-block; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>SunilGPT_LLMChat</h1>
-  <button id="new">New chat</button>
-</header>
-<div id="chat"><div class="wrap" id="msgs"><div id="empty">How can I help you today?</div></div></div>
-<footer>
-  <div id="box">
-    <textarea id="input" rows="1" placeholder="Type your message... (Enter to send, Shift+Enter for new line)"></textarea>
-    <button id="send">Send</button>
+<div id="app">
+  <aside id="side">
+    <button id="new">+ New chat</button>
+    <div id="list"></div>
+  </aside>
+  <div id="main">
+    <header>
+      <button id="menu">☰</button>
+      <h1 id="title">SunilGPT-LLMChat</h1>
+    </header>
+    <div id="chat"><div class="wrap" id="msgs"></div></div>
+    <footer>
+      <div id="box">
+        <textarea id="input" rows="1" placeholder="Type your message... (Enter to send, Shift+Enter for new line)"></textarea>
+        <button id="send">Send</button>
+      </div>
+    </footer>
   </div>
-</footer>
+</div>
 
 <script>
-const msgsEl = document.getElementById("msgs");
-const chatEl = document.getElementById("chat");
-const input = document.getElementById("input");
-const sendBtn = document.getElementById("send");
+const $ = id => document.getElementById(id);
+const msgsEl = $("msgs"), chatEl = $("chat"), input = $("input");
+const sendBtn = $("send"), listEl = $("list"), titleEl = $("title"), side = $("side");
 
-let messages = [];      // the whole conversation: [{role, content}, ...]
-let controller = null;  // lets us stop a reply in progress
+// ---------- data: a list of chats, each chat has its own messages ----------
+let chats = [];
+try { chats = JSON.parse(localStorage.getItem("chats-v1") || "[]"); } catch (e) { chats = []; }
+let currentId = localStorage.getItem("current") || "";
+let controller = null; // lets us stop a reply in progress
 
-// Load the saved chat from the browser (if any)
-try { messages = JSON.parse(localStorage.getItem("chat") || "[]"); } catch (e) { messages = []; }
+// move the old single chat (from Phase 1) into the sidebar, once
+try {
+  const old = JSON.parse(localStorage.getItem("chat") || "[]");
+  if (old.length && !chats.length) {
+    chats.push({ id: "old", title: old[0].content.slice(0, 40), messages: old });
+  }
+  localStorage.removeItem("chat");
+} catch (e) {}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const current = () => chats.find(c => c.id === currentId);
 
 function save() {
-  try { localStorage.setItem("chat", JSON.stringify(messages)); } catch (e) {}
+  try {
+    localStorage.setItem("chats-v1", JSON.stringify(chats));
+    localStorage.setItem("current", currentId);
+  } catch (e) {}
 }
 
+function ensureChat() {
+  if (current()) return;
+  if (chats.length) { currentId = chats[0].id; return; }
+  const c = { id: uid(), title: "New chat", messages: [] };
+  chats.unshift(c);
+  currentId = c.id;
+}
+
+// ---------- drawing things on the screen ----------
 function render(el, role, text) {
-  if (role === "assistant") {
-    el.innerHTML = DOMPurify.sanitize(marked.parse(text)); // safe Markdown
-  } else {
-    el.textContent = text;
-  }
+  if (role === "assistant") el.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  else el.textContent = text;
 }
 
 function addBubble(role, text) {
-  document.getElementById("empty")?.remove();
+  $("empty")?.remove();
   const el = document.createElement("div");
   el.className = "msg " + role;
   render(el, role, text);
@@ -79,19 +131,101 @@ function addBubble(role, text) {
   return el;
 }
 
-messages.forEach(m => addBubble(m.role, m.content));
+function renderSidebar() {
+  listEl.innerHTML = "";
+  chats.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "item" + (c.id === currentId ? " active" : "");
+    const name = document.createElement("span");
+    name.textContent = c.title;
+    const x = document.createElement("button");
+    x.textContent = "×";
+    x.title = "Delete chat";
+    x.onclick = e => { e.stopPropagation(); removeChat(c.id); };
+    row.onclick = () => switchTo(c.id);
+    row.append(name, x);
+    listEl.appendChild(row);
+  });
+}
 
-async function send() {
-  if (controller) { controller.abort(); return; } // the button works as Stop
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = "";
-  input.style.height = "auto";
+// adds Copy (and Regenerate on the last answer) under each AI answer
+function decorate() {
+  const c = current();
+  msgsEl.querySelectorAll(".actions").forEach(a => a.remove());
+  const bubbles = [...msgsEl.querySelectorAll(".msg.assistant")];
+  bubbles.forEach((b, k) => {
+    const i = +b.dataset.i;
+    if (isNaN(i)) return;
+    const bar = document.createElement("div");
+    bar.className = "actions";
 
-  messages.push({ role: "user", content: text });
-  addBubble("user", text);
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+    copy.onclick = () => {
+      navigator.clipboard.writeText(c.messages[i].content);
+      copy.textContent = "Copied!";
+      setTimeout(() => (copy.textContent = "Copy"), 1200);
+    };
+    bar.appendChild(copy);
+
+    if (k === bubbles.length - 1 && i === c.messages.length - 1) {
+      const regen = document.createElement("button");
+      regen.textContent = "Regenerate";
+      regen.onclick = () => {
+        if (controller) return;
+        c.messages.pop();   // remove the old answer
+        renderMessages();
+        ask(c);             // ask again
+      };
+      bar.appendChild(regen);
+    }
+    b.appendChild(bar);
+  });
+}
+
+function renderMessages() {
+  const c = current();
+  msgsEl.innerHTML = "";
+  titleEl.textContent = c.title;
+  if (!c.messages.length) {
+    msgsEl.innerHTML = '<div id="empty">How can I help you today?</div>';
+    return;
+  }
+  c.messages.forEach((m, i) => { addBubble(m.role, m.content).dataset.i = i; });
+  decorate();
+}
+
+function renderAll() { renderSidebar(); renderMessages(); }
+
+// ---------- chat actions ----------
+function newChat() {
+  if (controller) controller.abort();
+  const c = current();
+  if (c && !c.messages.length) { input.focus(); return; } // already empty
+  const n = { id: uid(), title: "New chat", messages: [] };
+  chats.unshift(n);
+  currentId = n.id;
+  save(); renderAll(); side.classList.remove("open"); input.focus();
+}
+
+function switchTo(id) {
+  if (controller) controller.abort();
+  currentId = id;
+  save(); renderAll(); side.classList.remove("open");
+}
+
+function removeChat(id) {
+  if (!confirm("Delete this chat?")) return;
+  if (controller) controller.abort();
+  chats = chats.filter(c => c.id !== id);
+  if (id === currentId) currentId = "";
+  ensureChat();
+  save(); renderAll();
+}
+
+// ---------- talking to the server ----------
+async function ask(c) {
   const bubble = addBubble("assistant", "…");
-
   controller = new AbortController();
   sendBtn.textContent = "Stop";
   let reply = "";
@@ -100,7 +234,7 @@ async function send() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages: c.messages }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error("Server error " + res.status);
@@ -111,7 +245,7 @@ async function send() {
       const { done, value } = await reader.read();
       if (done) break;
       reply += decoder.decode(value, { stream: true });
-      render(bubble, "assistant", reply);   // text appears word by word
+      render(bubble, "assistant", reply);
       chatEl.scrollTop = chatEl.scrollHeight;
     }
   } catch (e) {
@@ -119,14 +253,38 @@ async function send() {
     render(bubble, "assistant", reply || "…");
   }
 
-  if (reply) messages.push({ role: "assistant", content: reply });
-  else messages.pop(); // nothing came back, so remove the user message
-  save();
+  if (reply) {
+    c.messages.push({ role: "assistant", content: reply });
+    bubble.dataset.i = c.messages.length - 1;
+  }
   controller = null;
   sendBtn.textContent = "Send";
+  save();
+  if (c.id === currentId) decorate();
 }
 
+function send() {
+  if (controller) { controller.abort(); return; } // the button works as Stop
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  input.style.height = "auto";
+
+  const c = current();
+  if (!c.messages.length) c.title = text.slice(0, 40); // title from first message
+  c.messages.push({ role: "user", content: text });
+  chats.splice(chats.indexOf(c), 1);  // move this chat to the top
+  chats.unshift(c);
+  addBubble("user", text);
+  titleEl.textContent = c.title;
+  save(); renderSidebar();
+  ask(c);
+}
+
+// ---------- buttons and keys ----------
 sendBtn.addEventListener("click", send);
+$("new").addEventListener("click", newChat);
+$("menu").addEventListener("click", () => side.classList.toggle("open"));
 input.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -134,10 +292,11 @@ input.addEventListener("input", () => {
   input.style.height = "auto";
   input.style.height = input.scrollHeight + "px";
 });
-document.getElementById("new").addEventListener("click", () => {
-  messages = []; save();
-  msgsEl.innerHTML = '<div id="empty">How can I help you today?</div>';
-});
+
+// ---------- start ----------
+ensureChat();
+save();
+renderAll();
 </script>
 </body>
 </html>
