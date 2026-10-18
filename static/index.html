@@ -72,6 +72,10 @@
     #side.open { transform: translateX(0); }
     #menu { display: inline-block; }
   }
+    #brand { padding: 10px 12px; border-radius: 10px; background: var(--hover); border: 1px solid var(--border); font-size: 13px; line-height: 1.4; }
+    #brand strong { display: block; font-size: 15px; color: var(--accent); }
+    #welcome { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    #welcome-sub { margin-bottom: 18px; }
     #note { max-width: 760px; margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -95,6 +99,7 @@
 
 <div id="app">
   <aside id="side">
+    <div id="brand"><strong>🤖 Welcome to SunilGPT-LLMChat</strong>Your free AI assistant</div>
     <button id="new">+ New chat</button>
     <div id="list"></div>
     <div id="who"></div>
@@ -268,7 +273,7 @@ const SUGGESTIONS = [
 ];
 
 function showEmpty() {
-  msgsEl.innerHTML = '<div id="empty"><div style="font-size:22px;margin-bottom:14px">How can I help you today?</div></div>';
+  msgsEl.innerHTML = '<div id="empty"><div id="welcome">👋 Welcome to SunilGPT-LLMChat</div><div id="welcome-sub">How can I help you today?</div></div>';
   const box = $("empty");
   SUGGESTIONS.forEach(t => {
     const b = document.createElement("button");
