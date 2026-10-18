@@ -15,7 +15,7 @@ from typing import Literal
 
 from ddgs import DDGS
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
@@ -67,17 +67,76 @@ def current_user(authorization: str = Header(default="")):
 
 
 # each user can send at most 15 messages per minute (protects your free limit)
-hits = defaultdict(deque)
+# ---------------------------------------------------------------
+# LIMITS (these protect your free AI quota)
+# ---------------------------------------------------------------
+LIMITS = {"guest": (8, 40), "user": (15, 300)}  # (messages per minute, per day)
+GUEST_DAILY_TOTAL = 500                          # all guests together, per day
+
+hits = defaultdict(deque)  # recent message times per person
+daily = {}                 # messages today per person
 
 
-def check_rate(user_id: str):
+def optional_user(authorization: str = Header(default="")):
+    """Guests send no token (returns None). A token that is sent must be valid."""
+    if not authorization:
+        return None
+    return current_user(authorization)
+
+
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_limits(user, request: Request):
+    kind = "user" if user else "guest"
+    key = user["id"] if user else "ip:" + client_ip(request)
+    per_minute, per_day = LIMITS[kind]
     now = time.time()
-    q = hits[user_id]
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+
+    # clean up old entries so memory stays small
+    if len(hits) > 5000:
+        for k in [k for k, v in hits.items() if not v or now - v[-1] > 60]:
+            del hits[k]
+    if len(daily) > 5000:
+        for k in [k for k, v in daily.items() if v[0] != today]:
+            del daily[k]
+
+    q = hits[key]
     while q and now - q[0] > 60:
         q.popleft()
-    if len(q) >= 15:
-        raise HTTPException(status_code=429, detail="Too many messages")
+    if len(q) >= per_minute:
+        raise HTTPException(
+            status_code=429, detail="Too many messages. Please wait a minute."
+        )
+
+    day, count = daily.get(key, (today, 0))
+    if day != today:
+        count = 0
+    if count >= per_day:
+        if kind == "guest":
+            msg = "Daily guest limit reached. Log in for more messages, or come back tomorrow."
+        else:
+            msg = "Daily limit reached. Please come back tomorrow."
+        raise HTTPException(status_code=429, detail=msg)
+
+    if kind == "guest":
+        gday, gcount = daily.get("ALL_GUESTS", (today, 0))
+        if gday != today:
+            gcount = 0
+        if gcount >= GUEST_DAILY_TOTAL:
+            raise HTTPException(
+                status_code=429,
+                detail="Guest chat is full for today. Please log in, or come back tomorrow.",
+            )
+        daily["ALL_GUESTS"] = (today, gcount + 1)
+
     q.append(now)
+    daily[key] = (today, count + 1)
 
 
 # ---------------------------------------------------------------
@@ -337,8 +396,8 @@ class ExtractRequest(BaseModel):
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, user=Depends(current_user)):
-    check_rate(user["id"])
+def chat(req: ChatRequest, request: Request, user=Depends(optional_user)):
+    check_limits(user, request)
     history = [m.model_dump() for m in req.messages[-20:]]
     docs = [d.model_dump() for d in req.documents]
 

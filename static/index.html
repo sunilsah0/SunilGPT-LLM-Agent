@@ -17,14 +17,16 @@
   body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
   #app { display: flex; height: 100%; }
 
-  /* login screen */
-  #auth { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 20px; }
-  #authbox { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; }
-  #authbox h2 { margin: 0 0 6px; text-align: center; }
+  /* login window (opens only when you click "Log in / Sign up") */
+  #auth { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; padding: 20px; }
+  #authbox { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); padding: 22px; border-radius: 14px; border: 1px solid var(--border); }
+  #authbox h2 { margin: 0; text-align: center; }
+  #authbox p { margin: 0 0 4px; text-align: center; color: var(--muted); font-size: 13px; }
   #authbox input { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
   #authmsg { color: var(--accent); font-size: 14px; min-height: 18px; }
   .row { display: flex; gap: 8px; }
   .row button { flex: 1; padding: 10px; }
+  #guest { border: none; background: transparent; color: var(--muted); text-decoration: underline; }
 
   /* sidebar */
   #side { width: 260px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px; gap: 10px; }
@@ -35,7 +37,7 @@
   .item.active { background: var(--hover); font-weight: 600; }
   .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item button { border: none; background: transparent; color: var(--muted); padding: 0 4px; font-size: 16px; }
-  #who { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #who { font-size: 12px; color: var(--muted); }
 
   /* main */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -55,16 +57,15 @@
   .actions button { font-size: 12px; padding: 2px 8px; color: var(--muted); }
   #empty { text-align: center; color: var(--muted); margin-top: 20vh; }
   footer { padding: 12px 20px 20px; }
-  #box { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
-  textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font: inherit; max-height: 160px; padding: 6px; }
-  #send { background: var(--accent); color: #fff; border: none; }
-  
-
-    #docs { max-width: 760px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #docs { max-width: 760px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { background: var(--user); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 13px; }
   .chip button { border: none; background: transparent; color: var(--muted); padding: 0 6px; }
   #attach { border: none; background: transparent; font-size: 18px; padding: 4px 8px; }
   #docstatus { max-width: 760px; margin: 0 auto 6px; font-size: 13px; color: var(--muted); }
+  #box { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
+  textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font: inherit; max-height: 160px; padding: 6px; }
+  #send { background: var(--accent); color: #fff; border: none; }
+
   @media (max-width: 700px) {
     #side { position: fixed; z-index: 10; top: 0; bottom: 0; left: 0; transform: translateX(-100%); transition: transform 0.2s; }
     #side.open { transform: translateX(0); }
@@ -74,10 +75,11 @@
 </head>
 <body>
 
-<!-- LOGIN SCREEN (hidden after login) -->
+<!-- LOGIN WINDOW -->
 <div id="auth">
   <div id="authbox">
-    <h2>SunilGPT-LLMChat</h2>
+    <h2>Log in or sign up</h2>
+    <p>Save your chats on all your devices and upload PDFs.</p>
     <input id="email" type="email" placeholder="Email" autocomplete="email">
     <input id="password" type="password" placeholder="Password (min 6 characters)" autocomplete="current-password">
     <div id="authmsg"></div>
@@ -85,6 +87,7 @@
       <button id="login">Log in</button>
       <button id="signup">Sign up</button>
     </div>
+    <button id="guest">Continue as guest</button>
   </div>
 </div>
 
@@ -93,15 +96,16 @@
     <button id="new">+ New chat</button>
     <div id="list"></div>
     <div id="who"></div>
-    <button id="logout">Log out</button>
+    <button id="login-open">Log in / Sign up</button>
+    <button id="logout" style="display:none">Log out</button>
   </aside>
   <div id="main">
     <header>
       <button id="menu">☰</button>
-      <h1 id="title">My AI Chat</h1>
+      <h1 id="title">SunilGPT-LLMChat</h1>
     </header>
     <div id="chat"><div class="wrap" id="msgs"></div></div>
-        <footer>
+    <footer>
       <div id="docstatus"></div>
       <div id="docs"></div>
       <div id="box">
@@ -126,15 +130,32 @@ const $ = id => document.getElementById(id);
 const msgsEl = $("msgs"), chatEl = $("chat"), input = $("input");
 const sendBtn = $("send"), listEl = $("list"), titleEl = $("title"), side = $("side");
 
-let chats = [];          // all chats of the logged-in user
+const GUEST_KEY = "guest-chats-v1";
+
+let session = null;      // null = guest, otherwise the logged-in session
+let chats = [];
 let currentId = "";
 let controller = null;   // lets us stop a reply in progress
+let warned = false;
 
 const current = () => chats.find(c => c.id === currentId);
 
-// ---------- saving to the database ----------
+// ---------- saving ----------
+// guests: saved in this browser. logged in: saved in the database.
+function saveGuest() {
+  try {
+    localStorage.setItem(GUEST_KEY, JSON.stringify(chats.filter(c => c.messages.length)));
+  } catch (e) {
+    if (!warned) {
+      warned = true;
+      alert("Your browser storage is full. Delete some chats or files, or log in to save online.");
+    }
+  }
+}
+
 async function persist(c) {
   if (!c.messages.length) return; // empty chats are not saved
+  if (!session) { saveGuest(); return; }
   const { error } = await sb.from("chats").upsert({
     id: c.id,
     title: c.title,
@@ -148,7 +169,7 @@ async function persist(c) {
 function ensureChat() {
   if (current()) return;
   if (chats.length) { currentId = chats[0].id; return; }
-  const c = { id: crypto.randomUUID(), title: "New chat", messages: [] };
+  const c = { id: crypto.randomUUID(), title: "New chat", messages: [], docs: [] };
   chats.unshift(c);
   currentId = c.id;
 }
@@ -220,6 +241,23 @@ function decorate() {
   });
 }
 
+function renderDocs() {
+  const c = current();
+  const box = $("docs");
+  box.innerHTML = "";
+  (c.docs || []).forEach((d, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = "📄 " + d.name;
+    const x = document.createElement("button");
+    x.textContent = "×";
+    x.title = "Remove file";
+    x.onclick = () => { c.docs.splice(i, 1); renderDocs(); persist(c); };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+
 function renderMessages() {
   const c = current();
   renderDocs();
@@ -240,7 +278,7 @@ function newChat() {
   if (controller) controller.abort();
   const c = current();
   if (c && !c.messages.length) { input.focus(); return; }
-  const n = { id: crypto.randomUUID(), title: "New chat", messages: [] };
+  const n = { id: crypto.randomUUID(), title: "New chat", messages: [], docs: [] };
   chats.unshift(n);
   currentId = n.id;
   renderAll(); side.classList.remove("open"); input.focus();
@@ -259,8 +297,12 @@ async function removeChat(id) {
   if (id === currentId) currentId = "";
   ensureChat();
   renderAll();
-  const { error } = await sb.from("chats").delete().eq("id", id);
-  if (error) console.error("Delete failed:", error.message);
+  if (session) {
+    const { error } = await sb.from("chats").delete().eq("id", id);
+    if (error) console.error("Delete failed:", error.message);
+  } else {
+    saveGuest();
+  }
 }
 
 // ---------- talking to the server ----------
@@ -271,18 +313,23 @@ async function ask(c) {
   let reply = "";
 
   try {
-    // get the login token (supabase refreshes it automatically if needed)
+    // logged in: send the login token. guest: send nothing.
+    const headers = { "Content-Type": "application/json" };
     const { data } = await sb.auth.getSession();
-    const token = data.session ? data.session.access_token : "";
+    if (data.session) headers.Authorization = "Bearer " + data.session.access_token;
 
     const res = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      headers,
       body: JSON.stringify({ messages: c.messages, documents: c.docs || [] }),
       signal: controller.signal,
     });
     if (res.status === 401) throw new Error("login");
-    if (res.status === 429) throw new Error("slow");
+    if (res.status === 429) {
+      let detail = "Too many messages. Please wait a minute.";
+      try { detail = (await res.json()).detail || detail; } catch (e) {}
+      throw new Error("slow:" + detail);
+    }
     if (!res.ok) throw new Error("Server error " + res.status);
 
     const reader = res.body.getReader();
@@ -297,7 +344,7 @@ async function ask(c) {
   } catch (e) {
     if (e.name !== "AbortError") {
       if (e.message === "login") reply += "\n\n⚠️ Your login expired. Please refresh the page and log in again.";
-      else if (e.message === "slow") reply += "\n\n⚠️ You are sending messages too fast. Please wait a minute.";
+      else if (e.message.startsWith("slow:")) reply += "\n\n⚠️ " + e.message.slice(5);
       else reply += "\n\n⚠️ Something went wrong. Please try again.";
     }
     render(bubble, "assistant", reply || "…");
@@ -332,54 +379,7 @@ function send() {
   ask(c);
 }
 
-// ---------- login ----------
-async function doAuth(mode) {
-  const email = $("email").value.trim();
-  const password = $("password").value;
-  const msg = $("authmsg");
-  msg.textContent = "";
-  if (!email || password.length < 6) {
-    msg.textContent = "Enter your email and a password of at least 6 characters.";
-    return;
-  }
-  const { data, error } = mode === "signup"
-    ? await sb.auth.signUp({ email, password })
-    : await sb.auth.signInWithPassword({ email, password });
-  if (error) { msg.textContent = error.message; return; }
-  if (data.session) startApp(data.session);
-  else msg.textContent = "Account created. Check your email and click the confirmation link, then log in.";
-}
-
-// chats saved in this browser by Phase 3 can be moved into the account (asked once)
-async function importOld() {
-  if (localStorage.getItem("import-asked")) return;
-  let old = [];
-  try { old = JSON.parse(localStorage.getItem("chats-v1") || "[]"); } catch (e) {}
-  old = old.filter(c => c.messages && c.messages.length);
-  localStorage.setItem("import-asked", "1");
-  if (!old.length) return;
-  if (!confirm("Found " + old.length + " chat(s) saved in this browser. Add them to your account?")) return;
-  for (const o of old) {
-    const c = { id: crypto.randomUUID(), title: o.title, messages: o.messages };
-    chats.push(c);
-    await persist(c);
-  }
-}
-
-async function startApp(session) {
-  $("auth").style.display = "none";
-  $("who").textContent = session.user.email;
-  const { data, error } = await sb.from("chats")
-    .select("id,title,messages,docs")
-    .order("updated_at", { ascending: false });
-  if (error) alert("Could not load your chats: " + error.message);
-  chats = data || [];
-  await importOld();
-  currentId = "";
-  ensureChat();
-  renderAll();
-}
-// ---------- documents (PDF, .txt, .md) ----------
+// ---------- documents (PDF needs login; .txt and .md work for everyone) ----------
 const MAX_TOTAL = 250000; // total characters of documents per chat
 
 function toBase64(buf) {
@@ -391,33 +391,23 @@ function toBase64(buf) {
   return btoa(s);
 }
 
-function renderDocs() {
-  const c = current();
-  const box = $("docs");
-  box.innerHTML = "";
-  (c.docs || []).forEach((d, i) => {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.textContent = "📄 " + d.name;
-    const x = document.createElement("button");
-    x.textContent = "×";
-    x.title = "Remove file";
-    x.onclick = () => { c.docs.splice(i, 1); renderDocs(); persist(c); };
-    chip.appendChild(x);
-    box.appendChild(chip);
-  });
-}
-
 async function addDocument(file) {
   const c = current();
   c.docs = c.docs || [];
+  const isPdf = /\.pdf$/i.test(file.name);
+
+  if (isPdf && !session) {
+    alert("Please log in to upload PDFs. Guests can attach .txt or .md files.");
+    openAuth();
+    return;
+  }
   if (c.docs.length >= 5) { alert("Maximum 5 files per chat."); return; }
   if (file.size > 5 * 1024 * 1024) { alert("File is too big (maximum 5 MB)."); return; }
 
   $("docstatus").textContent = "Reading " + file.name + "...";
   try {
     let text = "";
-    if (/\.pdf$/i.test(file.name)) {
+    if (isPdf) {
       const { data } = await sb.auth.getSession();
       const res = await fetch("/api/extract", {
         method: "POST",
@@ -445,20 +435,104 @@ async function addDocument(file) {
   $("docstatus").textContent = "";
 }
 
+// ---------- guest mode and login ----------
+function openAuth() {
+  $("authmsg").textContent = "";
+  $("auth").style.display = "flex";
+}
+function closeAuth() { $("auth").style.display = "none"; }
+
+function startGuest() {
+  session = null;
+  $("who").textContent = "Guest mode: chats are saved only in this browser.";
+  $("login-open").style.display = "";
+  $("logout").style.display = "none";
+
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(GUEST_KEY) || "[]"); } catch (e) {}
+  if (!saved.length) {
+    // move chats from older versions of this app into guest storage (once)
+    try { saved = JSON.parse(localStorage.getItem("chats-v1") || "[]"); } catch (e) {}
+    localStorage.removeItem("chats-v1");
+    localStorage.removeItem("current");
+    localStorage.removeItem("chat");
+  }
+  chats = saved.map(c => ({ ...c, docs: c.docs || [] }));
+  saveGuest();
+  currentId = "";
+  ensureChat();
+  renderAll();
+}
+
+// when a guest logs in, offer to move their guest chats into the account
+async function importGuest() {
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem(GUEST_KEY) || "[]"); } catch (e) {}
+  local = local.filter(c => c.messages && c.messages.length);
+  if (!local.length) return;
+  if (!confirm("Found " + local.length + " chat(s) saved in this browser. Add them to your account?")) return;
+  for (const o of local) {
+    const c = { id: crypto.randomUUID(), title: o.title, messages: o.messages, docs: o.docs || [] };
+    chats.push(c);
+    await persist(c); // session is set, so this saves to the database
+  }
+  localStorage.removeItem(GUEST_KEY);
+}
+
+async function startApp(s) {
+  session = s;
+  closeAuth();
+  $("who").textContent = s.user.email;
+  $("login-open").style.display = "none";
+  $("logout").style.display = "";
+  const { data, error } = await sb.from("chats")
+    .select("id,title,messages,docs")
+    .order("updated_at", { ascending: false });
+  if (error) alert("Could not load your chats: " + error.message);
+  chats = (data || []).map(c => ({ ...c, docs: c.docs || [] }));
+  await importGuest();
+  currentId = "";
+  ensureChat();
+  renderAll();
+}
+
+async function doAuth(mode) {
+  const email = $("email").value.trim();
+  const password = $("password").value;
+  const msg = $("authmsg");
+  msg.textContent = "";
+  if (!email || password.length < 6) {
+    msg.textContent = "Enter your email and a password of at least 6 characters.";
+    return;
+  }
+  const { data, error } = mode === "signup"
+    ? await sb.auth.signUp({ email, password })
+    : await sb.auth.signInWithPassword({ email, password });
+  if (error) { msg.textContent = error.message; return; }
+  if (data.session) {
+    if (controller) controller.abort();
+    startApp(data.session);
+  } else {
+    msg.textContent = "Account created. Check your email and click the confirmation link, then log in.";
+  }
+}
+
+// ---------- buttons and keys ----------
+sendBtn.addEventListener("click", send);
+$("new").addEventListener("click", newChat);
+$("menu").addEventListener("click", () => side.classList.toggle("open"));
+$("login-open").addEventListener("click", openAuth);
+$("guest").addEventListener("click", closeAuth);
+$("login").addEventListener("click", () => doAuth("login"));
+$("signup").addEventListener("click", () => doAuth("signup"));
+$("password").addEventListener("keydown", e => { if (e.key === "Enter") doAuth("login"); });
+$("logout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
 $("attach").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", async e => {
   const file = e.target.files[0];
   e.target.value = "";
   if (file) await addDocument(file);
 });
-// ---------- buttons and keys ----------
-sendBtn.addEventListener("click", send);
-$("new").addEventListener("click", newChat);
-$("menu").addEventListener("click", () => side.classList.toggle("open"));
-$("login").addEventListener("click", () => doAuth("login"));
-$("signup").addEventListener("click", () => doAuth("signup"));
-$("password").addEventListener("keydown", e => { if (e.key === "Enter") doAuth("login"); });
-$("logout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
 input.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -467,10 +541,11 @@ input.addEventListener("input", () => {
   input.style.height = input.scrollHeight + "px";
 });
 
-// ---------- start: already logged in? ----------
+// ---------- start: logged in before? otherwise guest mode ----------
 (async () => {
   const { data } = await sb.auth.getSession();
   if (data.session) startApp(data.session);
+  else startGuest();
 })();
 </script>
 </body>
