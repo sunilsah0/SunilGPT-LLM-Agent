@@ -58,7 +58,13 @@
   #box { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
   textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font: inherit; max-height: 160px; padding: 6px; }
   #send { background: var(--accent); color: #fff; border: none; }
+  
 
+    #docs { max-width: 760px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--user); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 13px; }
+  .chip button { border: none; background: transparent; color: var(--muted); padding: 0 6px; }
+  #attach { border: none; background: transparent; font-size: 18px; padding: 4px 8px; }
+  #docstatus { max-width: 760px; margin: 0 auto 6px; font-size: 13px; color: var(--muted); }
   @media (max-width: 700px) {
     #side { position: fixed; z-index: 10; top: 0; bottom: 0; left: 0; transform: translateX(-100%); transition: transform 0.2s; }
     #side.open { transform: translateX(0); }
@@ -95,8 +101,12 @@
       <h1 id="title">My AI Chat</h1>
     </header>
     <div id="chat"><div class="wrap" id="msgs"></div></div>
-    <footer>
+        <footer>
+      <div id="docstatus"></div>
+      <div id="docs"></div>
       <div id="box">
+        <button id="attach" title="Attach a PDF, .txt or .md file">📎</button>
+        <input id="file" type="file" accept=".pdf,.txt,.md" hidden>
         <textarea id="input" rows="1" placeholder="Type your message... (Enter to send, Shift+Enter for new line)"></textarea>
         <button id="send">Send</button>
       </div>
@@ -129,6 +139,7 @@ async function persist(c) {
     id: c.id,
     title: c.title,
     messages: c.messages,
+    docs: c.docs || [],
     updated_at: new Date().toISOString(),
   });
   if (error) console.error("Save failed:", error.message);
@@ -211,6 +222,7 @@ function decorate() {
 
 function renderMessages() {
   const c = current();
+  renderDocs();
   msgsEl.innerHTML = "";
   titleEl.textContent = c.title;
   if (!c.messages.length) {
@@ -266,7 +278,7 @@ async function ask(c) {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-      body: JSON.stringify({ messages: c.messages }),
+      body: JSON.stringify({ messages: c.messages, documents: c.docs || [] }),
       signal: controller.signal,
     });
     if (res.status === 401) throw new Error("login");
@@ -358,7 +370,7 @@ async function startApp(session) {
   $("auth").style.display = "none";
   $("who").textContent = session.user.email;
   const { data, error } = await sb.from("chats")
-    .select("id,title,messages")
+    .select("id,title,messages,docs")
     .order("updated_at", { ascending: false });
   if (error) alert("Could not load your chats: " + error.message);
   chats = data || [];
@@ -367,7 +379,78 @@ async function startApp(session) {
   ensureChat();
   renderAll();
 }
+// ---------- documents (PDF, .txt, .md) ----------
+const MAX_TOTAL = 250000; // total characters of documents per chat
 
+function toBase64(buf) {
+  let s = "";
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+
+function renderDocs() {
+  const c = current();
+  const box = $("docs");
+  box.innerHTML = "";
+  (c.docs || []).forEach((d, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = "📄 " + d.name;
+    const x = document.createElement("button");
+    x.textContent = "×";
+    x.title = "Remove file";
+    x.onclick = () => { c.docs.splice(i, 1); renderDocs(); persist(c); };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+
+async function addDocument(file) {
+  const c = current();
+  c.docs = c.docs || [];
+  if (c.docs.length >= 5) { alert("Maximum 5 files per chat."); return; }
+  if (file.size > 5 * 1024 * 1024) { alert("File is too big (maximum 5 MB)."); return; }
+
+  $("docstatus").textContent = "Reading " + file.name + "...";
+  try {
+    let text = "";
+    if (/\.pdf$/i.test(file.name)) {
+      const { data } = await sb.auth.getSession();
+      const res = await fetch("/api/extract", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + data.session.access_token,
+        },
+        body: JSON.stringify({ filename: file.name, data: toBase64(await file.arrayBuffer()) }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.detail || "Could not read the PDF");
+      text = out.text;
+    } else {
+      text = await file.text();
+    }
+    if (!text.trim()) throw new Error("No text found. Scanned PDFs (pictures of pages) are not supported.");
+    const total = c.docs.reduce((n, d) => n + d.text.length, 0);
+    if (total + text.length > MAX_TOTAL) throw new Error("Too much text. Try a smaller file.");
+    c.docs.push({ name: file.name, text });
+    renderDocs();
+    persist(c);
+  } catch (e) {
+    alert(e.message);
+  }
+  $("docstatus").textContent = "";
+}
+
+$("attach").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (file) await addDocument(file);
+});
 // ---------- buttons and keys ----------
 sendBtn.addEventListener("click", send);
 $("new").addEventListener("click", newChat);
