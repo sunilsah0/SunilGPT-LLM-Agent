@@ -6,6 +6,7 @@
 <title>SunilGPT-LLMChat</title>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
   :root { --bg:#faf9f5; --panel:#fff; --side:#f3f1ea; --text:#1f1e1d; --muted:#73726c; --accent:#c96442; --user:#f0eee6; --border:#e5e3da; --hover:#e9e6dc; }
   @media (prefers-color-scheme: dark) {
@@ -16,6 +17,15 @@
   body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
   #app { display: flex; height: 100%; }
 
+  /* login screen */
+  #auth { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #authbox { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; }
+  #authbox h2 { margin: 0 0 6px; text-align: center; }
+  #authbox input { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  #authmsg { color: var(--accent); font-size: 14px; min-height: 18px; }
+  .row { display: flex; gap: 8px; }
+  .row button { flex: 1; padding: 10px; }
+
   /* sidebar */
   #side { width: 260px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px; gap: 10px; }
   #new { background: var(--accent); color: #fff; border: none; padding: 10px; }
@@ -25,6 +35,7 @@
   .item.active { background: var(--hover); font-weight: 600; }
   .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item button { border: none; background: transparent; color: var(--muted); padding: 0 4px; font-size: 16px; }
+  #who { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* main */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -48,7 +59,6 @@
   textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font: inherit; max-height: 160px; padding: 6px; }
   #send { background: var(--accent); color: #fff; border: none; }
 
-  /* phones */
   @media (max-width: 700px) {
     #side { position: fixed; z-index: 10; top: 0; bottom: 0; left: 0; transform: translateX(-100%); transition: transform 0.2s; }
     #side.open { transform: translateX(0); }
@@ -57,15 +67,32 @@
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN (hidden after login) -->
+<div id="auth">
+  <div id="authbox">
+    <h2>SunilGPT-LLMChat</h2>
+    <input id="email" type="email" placeholder="Email" autocomplete="email">
+    <input id="password" type="password" placeholder="Password (min 6 characters)" autocomplete="current-password">
+    <div id="authmsg"></div>
+    <div class="row">
+      <button id="login">Log in</button>
+      <button id="signup">Sign up</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
   <aside id="side">
     <button id="new">+ New chat</button>
     <div id="list"></div>
+    <div id="who"></div>
+    <button id="logout">Log out</button>
   </aside>
   <div id="main">
     <header>
       <button id="menu">☰</button>
-      <h1 id="title">SunilGPT-LLMChat</h1>
+      <h1 id="title">My AI Chat</h1>
     </header>
     <div id="chat"><div class="wrap" id="msgs"></div></div>
     <footer>
@@ -78,39 +105,39 @@
 </div>
 
 <script>
+// ===== PASTE YOUR TWO SUPABASE VALUES HERE (they are safe to be public) =====
+const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL";
+const SUPABASE_KEY = "PASTE_YOUR_PUBLISHABLE_KEY";
+// ===========================================================================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const $ = id => document.getElementById(id);
 const msgsEl = $("msgs"), chatEl = $("chat"), input = $("input");
 const sendBtn = $("send"), listEl = $("list"), titleEl = $("title"), side = $("side");
 
-// ---------- data: a list of chats, each chat has its own messages ----------
-let chats = [];
-try { chats = JSON.parse(localStorage.getItem("chats-v1") || "[]"); } catch (e) { chats = []; }
-let currentId = localStorage.getItem("current") || "";
-let controller = null; // lets us stop a reply in progress
+let chats = [];          // all chats of the logged-in user
+let currentId = "";
+let controller = null;   // lets us stop a reply in progress
 
-// move the old single chat (from Phase 1) into the sidebar, once
-try {
-  const old = JSON.parse(localStorage.getItem("chat") || "[]");
-  if (old.length && !chats.length) {
-    chats.push({ id: "old", title: old[0].content.slice(0, 40), messages: old });
-  }
-  localStorage.removeItem("chat");
-} catch (e) {}
-
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const current = () => chats.find(c => c.id === currentId);
 
-function save() {
-  try {
-    localStorage.setItem("chats-v1", JSON.stringify(chats));
-    localStorage.setItem("current", currentId);
-  } catch (e) {}
+// ---------- saving to the database ----------
+async function persist(c) {
+  if (!c.messages.length) return; // empty chats are not saved
+  const { error } = await sb.from("chats").upsert({
+    id: c.id,
+    title: c.title,
+    messages: c.messages,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) console.error("Save failed:", error.message);
 }
 
 function ensureChat() {
   if (current()) return;
   if (chats.length) { currentId = chats[0].id; return; }
-  const c = { id: uid(), title: "New chat", messages: [] };
+  const c = { id: crypto.randomUUID(), title: "New chat", messages: [] };
   chats.unshift(c);
   currentId = c.id;
 }
@@ -148,7 +175,6 @@ function renderSidebar() {
   });
 }
 
-// adds Copy (and Regenerate on the last answer) under each AI answer
 function decorate() {
   const c = current();
   msgsEl.querySelectorAll(".actions").forEach(a => a.remove());
@@ -173,9 +199,9 @@ function decorate() {
       regen.textContent = "Regenerate";
       regen.onclick = () => {
         if (controller) return;
-        c.messages.pop();   // remove the old answer
+        c.messages.pop();
         renderMessages();
-        ask(c);             // ask again
+        ask(c);
       };
       bar.appendChild(regen);
     }
@@ -201,26 +227,28 @@ function renderAll() { renderSidebar(); renderMessages(); }
 function newChat() {
   if (controller) controller.abort();
   const c = current();
-  if (c && !c.messages.length) { input.focus(); return; } // already empty
-  const n = { id: uid(), title: "New chat", messages: [] };
+  if (c && !c.messages.length) { input.focus(); return; }
+  const n = { id: crypto.randomUUID(), title: "New chat", messages: [] };
   chats.unshift(n);
   currentId = n.id;
-  save(); renderAll(); side.classList.remove("open"); input.focus();
+  renderAll(); side.classList.remove("open"); input.focus();
 }
 
 function switchTo(id) {
   if (controller) controller.abort();
   currentId = id;
-  save(); renderAll(); side.classList.remove("open");
+  renderAll(); side.classList.remove("open");
 }
 
-function removeChat(id) {
+async function removeChat(id) {
   if (!confirm("Delete this chat?")) return;
   if (controller) controller.abort();
   chats = chats.filter(c => c.id !== id);
   if (id === currentId) currentId = "";
   ensureChat();
-  save(); renderAll();
+  renderAll();
+  const { error } = await sb.from("chats").delete().eq("id", id);
+  if (error) console.error("Delete failed:", error.message);
 }
 
 // ---------- talking to the server ----------
@@ -231,12 +259,18 @@ async function ask(c) {
   let reply = "";
 
   try {
+    // get the login token (supabase refreshes it automatically if needed)
+    const { data } = await sb.auth.getSession();
+    const token = data.session ? data.session.access_token : "";
+
     const res = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
       body: JSON.stringify({ messages: c.messages }),
       signal: controller.signal,
     });
+    if (res.status === 401) throw new Error("login");
+    if (res.status === 429) throw new Error("slow");
     if (!res.ok) throw new Error("Server error " + res.status);
 
     const reader = res.body.getReader();
@@ -249,7 +283,11 @@ async function ask(c) {
       chatEl.scrollTop = chatEl.scrollHeight;
     }
   } catch (e) {
-    if (e.name !== "AbortError") reply += "\n\n⚠️ Something went wrong. Please try again.";
+    if (e.name !== "AbortError") {
+      if (e.message === "login") reply += "\n\n⚠️ Your login expired. Please refresh the page and log in again.";
+      else if (e.message === "slow") reply += "\n\n⚠️ You are sending messages too fast. Please wait a minute.";
+      else reply += "\n\n⚠️ Something went wrong. Please try again.";
+    }
     render(bubble, "assistant", reply || "…");
   }
 
@@ -259,32 +297,85 @@ async function ask(c) {
   }
   controller = null;
   sendBtn.textContent = "Send";
-  save();
   if (c.id === currentId) decorate();
+  persist(c);
 }
 
 function send() {
-  if (controller) { controller.abort(); return; } // the button works as Stop
+  if (controller) { controller.abort(); return; }
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
   input.style.height = "auto";
 
   const c = current();
-  if (!c.messages.length) c.title = text.slice(0, 40); // title from first message
+  if (!c.messages.length) c.title = text.slice(0, 40);
   c.messages.push({ role: "user", content: text });
-  chats.splice(chats.indexOf(c), 1);  // move this chat to the top
+  chats.splice(chats.indexOf(c), 1);
   chats.unshift(c);
   addBubble("user", text);
   titleEl.textContent = c.title;
-  save(); renderSidebar();
+  renderSidebar();
+  persist(c);
   ask(c);
+}
+
+// ---------- login ----------
+async function doAuth(mode) {
+  const email = $("email").value.trim();
+  const password = $("password").value;
+  const msg = $("authmsg");
+  msg.textContent = "";
+  if (!email || password.length < 6) {
+    msg.textContent = "Enter your email and a password of at least 6 characters.";
+    return;
+  }
+  const { data, error } = mode === "signup"
+    ? await sb.auth.signUp({ email, password })
+    : await sb.auth.signInWithPassword({ email, password });
+  if (error) { msg.textContent = error.message; return; }
+  if (data.session) startApp(data.session);
+  else msg.textContent = "Account created. Check your email and click the confirmation link, then log in.";
+}
+
+// chats saved in this browser by Phase 3 can be moved into the account (asked once)
+async function importOld() {
+  if (localStorage.getItem("import-asked")) return;
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem("chats-v1") || "[]"); } catch (e) {}
+  old = old.filter(c => c.messages && c.messages.length);
+  localStorage.setItem("import-asked", "1");
+  if (!old.length) return;
+  if (!confirm("Found " + old.length + " chat(s) saved in this browser. Add them to your account?")) return;
+  for (const o of old) {
+    const c = { id: crypto.randomUUID(), title: o.title, messages: o.messages };
+    chats.push(c);
+    await persist(c);
+  }
+}
+
+async function startApp(session) {
+  $("auth").style.display = "none";
+  $("who").textContent = session.user.email;
+  const { data, error } = await sb.from("chats")
+    .select("id,title,messages")
+    .order("updated_at", { ascending: false });
+  if (error) alert("Could not load your chats: " + error.message);
+  chats = data || [];
+  await importOld();
+  currentId = "";
+  ensureChat();
+  renderAll();
 }
 
 // ---------- buttons and keys ----------
 sendBtn.addEventListener("click", send);
 $("new").addEventListener("click", newChat);
 $("menu").addEventListener("click", () => side.classList.toggle("open"));
+$("login").addEventListener("click", () => doAuth("login"));
+$("signup").addEventListener("click", () => doAuth("signup"));
+$("password").addEventListener("keydown", e => { if (e.key === "Enter") doAuth("login"); });
+$("logout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
 input.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -293,10 +384,11 @@ input.addEventListener("input", () => {
   input.style.height = input.scrollHeight + "px";
 });
 
-// ---------- start ----------
-ensureChat();
-save();
-renderAll();
+// ---------- start: already logged in? ----------
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (data.session) startApp(data.session);
+})();
 </script>
 </body>
 </html>

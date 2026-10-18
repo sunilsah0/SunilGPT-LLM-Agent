@@ -5,10 +5,12 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Literal
-
+import urllib.error
+import urllib.request
+from collections import defaultdict, deque
 from ddgs import DDGS
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
@@ -33,7 +35,39 @@ SYSTEM_PROMPT = (
 )
 
 app = FastAPI()
+SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
+
+def current_user(authorization: str = Header(default="")):
+    """Asks Supabase: is this login token real? Returns the user, or stops with 401."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Please log in")
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/auth/v1/user",
+        headers={"Authorization": authorization, "apikey": SUPABASE_KEY},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError:
+        raise HTTPException(status_code=401, detail="Login expired")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Login service unavailable")
+
+
+# each user can send at most 15 messages per minute (protects your free limit)
+hits = defaultdict(deque)
+
+
+def check_rate(user_id: str):
+    now = time.time()
+    q = hits[user_id]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= 15:
+        raise HTTPException(status_code=429, detail="Too many messages")
+    q.append(now)
 
 # ---------------------------------------------------------------
 # TOOL 1: calculator (safe: it only allows numbers and + - * / ** %)
@@ -215,7 +249,8 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, user=Depends(current_user)):
+    check_rate(user["id"])
     history = [m.model_dump() for m in req.messages[-20:]]
 
     def stream():
