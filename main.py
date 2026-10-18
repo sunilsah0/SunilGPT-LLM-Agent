@@ -31,7 +31,7 @@ client = OpenAI(
 MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = (
-    "You are a helpful, honest, and friendly AI assistant. "
+    "You are SunilGPT, a helpful, honest, and friendly AI assistant. "
     "Answer clearly. Use simple words unless the user asks for depth. "
     "Use Markdown for lists and code blocks. "
     "You have tools: use calculator for maths, get_current_datetime for the "
@@ -405,8 +405,11 @@ def chat(req: ChatRequest, request: Request, user=Depends(optional_user)):
         try:
             yield from agent(history, docs)
         except Exception as e:
-            print("LLM error:", repr(e))
-            yield "\n\n⚠️ Error: " + repr(e)[:300]
+            print("LLM error:", repr(e))  # you can still see this in the Render logs
+            if os.environ.get("DEBUG_ERRORS") == "1":
+                yield "\n\n⚠️ Error: " + repr(e)[:300]
+            else:
+                yield "\n\n⚠️ Sorry, something went wrong on our side. Please try again in a minute."
 
     return StreamingResponse(stream(), media_type="text/plain; charset=utf-8")
 
@@ -422,5 +425,7 @@ def extract_pdf(req: ExtractRequest, user=Depends(current_user)):
         raise HTTPException(status_code=400, detail="Could not read this PDF")
     return {"text": "\n\n".join(pages).strip()}
 
-
+@app.get("/health")
+def health():
+    return {"ok": True}
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

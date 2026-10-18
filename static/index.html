@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SunilGPT-LLMChat</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -71,6 +72,7 @@
     #side.open { transform: translateX(0); }
     #menu { display: inline-block; }
   }
+    #note { max-width: 760px; margin: 8px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -114,6 +116,7 @@
         <textarea id="input" rows="1" placeholder="Type your message... (Enter to send, Shift+Enter for new line)"></textarea>
         <button id="send">Send</button>
       </div>
+      <div id="note">SunilGPT-LLMChat AI can make mistakes. Please don't share private information.</div>
     </footer>
   </div>
 </div>
@@ -257,14 +260,32 @@ function renderDocs() {
     box.appendChild(chip);
   });
 }
+const SUGGESTIONS = [
+  "Explain how the internet works in simple words",
+  "Help me write a professional email",
+  "What is the latest news about Sweden?",
+  "What is 15% of 2,480?",,
+  "How may i help you Today?",
+];
 
+function showEmpty() {
+  msgsEl.innerHTML = '<div id="empty"><div style="font-size:22px;margin-bottom:14px">How can I help you today?</div></div>';
+  const box = $("empty");
+  SUGGESTIONS.forEach(t => {
+    const b = document.createElement("button");
+    b.textContent = t;
+    b.style.cssText = "display:block;margin:8px auto;max-width:420px;width:100%";
+    b.onclick = () => { input.value = t; send(); };
+    box.appendChild(b);
+  });
+}
 function renderMessages() {
   const c = current();
   renderDocs();
   msgsEl.innerHTML = "";
   titleEl.textContent = c.title;
   if (!c.messages.length) {
-    msgsEl.innerHTML = '<div id="empty">How can I help you today?</div>';
+        showEmpty();
     return;
   }
   c.messages.forEach((m, i) => { addBubble(m.role, m.content).dataset.i = i; });
